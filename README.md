@@ -2,6 +2,31 @@
 
 A local, containerized observability lab for exploring how synthetic HTTP logs become searchable events, operational metrics, and alerts. It combines Grafana, Loki, Prometheus, Alloy, Silo and Alertmanager in a reproducible Docker Compose environment.
 
+# Click and [▶ Watch the demo video](https://youtu.be/4W-wq4l-nQs)
+<img width="1919" height="951" alt="image" src="https://github.com/user-attachments/assets/40ba0958-e7a0-43a9-9db1-ed1c98c28ad0" />
+
+## Core Technologies
+
+### Grafana
+Grafana is a visualization and analysis platform. In this project, it
+connects to Prometheus and Loki so you can explore metrics and logs through
+dashboards and queries.
+### Prometheus
+Prometheus is a monitoring system and time-series database. It collects
+numerical metrics at regular intervals and makes them available for querying.
+In this project, it collects metrics such as HTTP request counts and response
+sizes from the synthetic log exporter.
+### Grafana Loki
+Loki is a log aggregation system. It stores and indexes labels associated
+with log streams, making it possible to search and analyze logs using LogQL.
+In this project, Loki receives synthetic HTTP logs collected by Grafana Alloy.
+
+### How they work together
+1. A generator creates synthetic HTTP logs.
+2. Grafana Alloy collects the logs and sends them to Loki.
+3. A separate exporter reads the logs and exposes numerical metrics to
+   Prometheus.
+4. Grafana queries Loki and Prometheus to display logs and metrics.
 > **Scope:** This is a teaching and demonstration environment. It does not contain a banking application, real transaction data, attack detection rules, or production-ready security controls. Synthetic traffic and its response codes are not evidence of a cyberattack.
 
 ## What you can demonstrate
@@ -13,21 +38,73 @@ A local, containerized observability lab for exploring how synthetic HTTP logs b
 
 ## Architecture
 
+The lab uses two complementary telemetry paths: **logs** are collected by
+Grafana Alloy and sent to Loki, while **metrics** are generated from the
+same synthetic log file and scraped by Prometheus. Grafana brings both
+sources together for investigation and visualization.
+
 ```mermaid
-flowchart LR
-  G[Synthetic log generator] --> F[Shared log file]
-  F --> P[Grafana Alloy]
-  F --> E[Metrics exporter]
-  P --> GW[Loki gateway]
-  GW --> W[Loki write replicas]
-  W --> S[(Silo object storage)]
-  S --> R[Loki read replicas]
-  B[Loki backend replicas] --> S
-  R --> GF[Grafana]
-  E --> PR[Prometheus]
-  PR --> GF
-  B --> AM[Alertmanager]
+flowchart TB
+    GEN["Synthetic HTTP log generator"] --> FILE[("Shared log file")]
+
+    subgraph COLLECTION["Telemetry collection"]
+        direction LR
+        ALLOY["Grafana Alloy<br/>Log collection"]
+        EXPORTER["Metrics exporter<br/>Log-derived counters"]
+    end
+
+    FILE --> ALLOY
+    FILE --> EXPORTER
+
+    subgraph LOGS["Log ingestion, storage and queries"]
+        direction LR
+        GATEWAY["Loki gateway<br/>Request routing"]
+        WRITE["Loki write replicas<br/>Log ingestion"]
+        STORE[("Silo<br/>S3-compatible object storage")]
+        READ["Loki read replicas<br/>Log queries"]
+        BACKEND["Loki backend replicas<br/>Rules and coordination"]
+
+        GATEWAY -->|"Push logs"| WRITE
+        WRITE --> STORE
+        READ -->|"Read stored data"| STORE
+        BACKEND --> STORE
+    end
+
+    subgraph METRICS["Metrics and alerting"]
+        direction LR
+        PROM["Prometheus<br/>Metrics and queries"]
+        ALERT["Alertmanager<br/>Alert routing"]
+    end
+
+    GRAFANA["Grafana<br/>Dashboards and Explore"]
+
+    ALLOY -->|"Send logs"| GATEWAY
+    EXPORTER -->|"Expose metrics"| PROM
+    GRAFANA -->|"LogQL queries"| GATEWAY
+    GATEWAY -->|"Route queries"| READ
+    GRAFANA -->|"PromQL queries"| PROM
+    BACKEND -->|"Recording rules"| PROM
+    BACKEND -->|"Alerts"| ALERT
+
+    classDef source fill:#e8f1ff,stroke:#2563eb,color:#172554
+    classDef collect fill:#e6f7f2,stroke:#059669,color:#064e3b
+    classDef loki fill:#f3e8ff,stroke:#9333ea,color:#3b0764
+    classDef metrics fill:#fff1e6,stroke:#ea580c,color:#431407
+    classDef visual fill:#fff8db,stroke:#ca8a04,color:#422006
+
+    class GEN,FILE source
+    class ALLOY,EXPORTER collect
+    class GATEWAY,WRITE,STORE,READ,BACKEND loki
+    class PROM,ALERT metrics
+    class GRAFANA visual
 ```
+
+**Investigation flow:** Start with a metric in Grafana, then explore the
+corresponding synthetic logs in Loki. The missing-log rule illustrates
+how a telemetry gap can be sent to Alertmanager.
+
+> This is a single-host lab. The replicas demonstrate Loki's component
+> topology; they do not provide host-level high availability.
 
 Loki also uses memberlist for cluster coordination. Grafana queries Loki through the gateway. The exporter reads the same file independently; it does not derive Prometheus metrics from Loki. All traffic is synthetic. The exporter counts parsed lines and response bytes, not request latency. Counters reset on exporter restart, and the file reader may replay data on restart or rotation; do not use these values for billing or audit evidence.
 
