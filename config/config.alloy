@@ -1,0 +1,21 @@
+loki.source.file "generated" {
+  targets = [{__path__ = "/var/log/generated/generated-logs.txt", job = "generated-logs"}]
+  forward_to = [loki.process.generated.receiver]
+}
+
+loki.process "generated" {
+  stage.json {
+    expressions = {http_method = "method", http_status = "status"}
+  }
+  stage.labels {
+    values = {http_method = "", http_status = ""}
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki-gateway/loki/api/v1/push"
+    tenant_id = "docker"
+  }
+}

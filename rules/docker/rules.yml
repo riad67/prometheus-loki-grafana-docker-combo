@@ -1,0 +1,14 @@
+groups:
+  - name: generated-log-health
+    interval: 30s
+    rules:
+      - record: generated_logs:rate1m
+        expr: sum by (http_method) (rate({job="generated-logs"}[1m]))
+      - alert: NoGeneratedLogs
+        expr: absent_over_time({job="generated-logs"}[5m])
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: No synthetic logs received
+          description: Check the generator, Alloy and Loki ingestion path.

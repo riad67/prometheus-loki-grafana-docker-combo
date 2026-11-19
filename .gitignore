@@ -1,0 +1,5 @@
+.env
+.data/
+loki/
+__pycache__/
+*.pyc
